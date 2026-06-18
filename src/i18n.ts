@@ -25,6 +25,10 @@ export interface Translations {
   labelPrev: string; queueTitle: string; qEmpty: string; printQ: string; remove: string;
   skuTitle: string; sCatg: string; sType: string; sSize: string; sSeq: string; skuHelp: string; preview: string; genBatch: string; batchTitle: string; apply: string;
   supTitle: string; supAdd: string; contact: string; sProducts: string; onTime: string; leadTime: string; days: string; lastOrder: string; newPO: string;
+  poCreate: string; poCreateSub: string; poCreateDraft: string; poCreateSend: string;
+  poSearchPh: string; poLinesEmpty: string; poCols: string; poColSku: string; poColBc: string; poColCat: string; poColMargin: string;
+  poRetail: string; poCostCol: string; poQtyCol: string; poAdd: string; poLineItems: string;
+  apTitle: string; apEs: string; apEn: string; apOptional: string; apCreate: string;
   nav_ai: string; nav_settings: string;
   aiTitle: string; aiSub: string; aiPh: string; aiSend: string; aiClear: string; aiNoKey: string; aiNoKeyLink: string;
   aiChip1: string; aiChip2: string; aiChip3: string; aiChip4: string;
@@ -61,6 +65,10 @@ export const es: Translations = {
   skuHelp:'El SKU se construye con CATEGORÍA · TIPO · TAMAÑO · SECUENCIA. La secuencia se incrementa automáticamente en cada producto del lote.',
   preview:'Vista previa', genBatch:'Generar lote de 6', batchTitle:'Próximos SKU del lote', apply:'Asignar y crear',
   supTitle:'Proveedores', supAdd:'Agregar proveedor', contact:'Contacto', sProducts:'productos', onTime:'A tiempo', leadTime:'Entrega', days:'días', lastOrder:'Última orden', newPO:'Nueva orden',
+  poCreate:'Nueva orden de compra', poCreateSub:'Selecciona un proveedor y agrega productos', poCreateDraft:'Guardar borrador', poCreateSend:'Enviar orden',
+  poSearchPh:'Buscar por nombre, SKU o código de barras…', poLinesEmpty:'Busca y agrega productos usando el panel de arriba.', poCols:'Columnas', poColSku:'SKU', poColBc:'Código de barras', poColCat:'Categoría', poColMargin:'Margen',
+  poRetail:'Precio venta', poCostCol:'Costo', poQtyCol:'Cant.', poAdd:'Agregar', poLineItems:'Artículos en esta orden',
+  apTitle:'Agregar producto', apEs:'Nombre en español', apEn:'Nombre en inglés', apOptional:'(opcional)', apCreate:'Crear producto',
   nav_ai:'Asistente IA', nav_settings:'Ajustes',
   aiTitle:'Asistente de inventario', aiSub:'Pregunta sobre tu stock, órdenes y proveedores', aiPh:'Escribe tu pregunta…', aiSend:'Enviar', aiClear:'Limpiar chat',
   aiNoKey:'Configura tu clave de API de Anthropic en Ajustes para activar el asistente.', aiNoKeyLink:'Ir a Ajustes',
@@ -99,6 +107,10 @@ export const en: Translations = {
   skuHelp:'The SKU is built from CATEGORY · TYPE · SIZE · SEQUENCE. The sequence auto-increments for each product in the batch.',
   preview:'Preview', genBatch:'Generate batch of 6', batchTitle:'Next batch SKUs', apply:'Assign & create',
   supTitle:'Suppliers', supAdd:'Add supplier', contact:'Contact', sProducts:'products', onTime:'On-time', leadTime:'Lead time', days:'days', lastOrder:'Last order', newPO:'New order',
+  poCreate:'New purchase order', poCreateSub:'Select a supplier and add products', poCreateDraft:'Save draft', poCreateSend:'Submit order',
+  poSearchPh:'Search by name, SKU, or barcode…', poLinesEmpty:'Search and add products using the panel above.', poCols:'Columns', poColSku:'SKU', poColBc:'Barcode', poColCat:'Category', poColMargin:'Margin',
+  poRetail:'Retail price', poCostCol:'Cost', poQtyCol:'Qty', poAdd:'Add', poLineItems:'Items in this order',
+  apTitle:'Add product', apEs:'Name in Spanish', apEn:'Name in English', apOptional:'(optional)', apCreate:'Create product',
   nav_ai:'AI Assistant', nav_settings:'Settings',
   aiTitle:'Inventory Assistant', aiSub:'Ask about your stock, orders, and suppliers', aiPh:'Type your question…', aiSend:'Send', aiClear:'Clear chat',
   aiNoKey:'Configure your Anthropic API key in Settings to enable the assistant.', aiNoKeyLink:'Go to Settings',

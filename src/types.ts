@@ -1,4 +1,4 @@
-export type Screen = 'dashboard' | 'inventory' | 'product' | 'po' | 'poDetail' | 'bc' | 'sku' | 'sup' | 'ai' | 'settings';
+export type Screen = 'dashboard' | 'inventory' | 'product' | 'po' | 'poDetail' | 'bc' | 'sku' | 'sup' | 'ai' | 'settings' | 'poCreate';
 
 export interface AIMessage {
   role: 'user' | 'assistant';
