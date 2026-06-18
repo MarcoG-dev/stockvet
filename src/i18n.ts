@@ -25,6 +25,11 @@ export interface Translations {
   labelPrev: string; queueTitle: string; qEmpty: string; printQ: string; remove: string;
   skuTitle: string; sCatg: string; sType: string; sSize: string; sSeq: string; skuHelp: string; preview: string; genBatch: string; batchTitle: string; apply: string;
   supTitle: string; supAdd: string; contact: string; sProducts: string; onTime: string; leadTime: string; days: string; lastOrder: string; newPO: string;
+  nav_ai: string; nav_settings: string;
+  aiTitle: string; aiSub: string; aiPh: string; aiSend: string; aiClear: string; aiNoKey: string; aiNoKeyLink: string;
+  aiChip1: string; aiChip2: string; aiChip3: string; aiChip4: string;
+  settingsTitle: string; settingsSub: string; skApiKey: string; skApiKeyPh: string; skApiKeySave: string; skApiKeyClear: string; skApiKeyHint: string; skApiKeyOk: string;
+  skStoreName: string; skStoreVal: string; skSaved: string;
 }
 
 export const es: Translations = {
@@ -55,7 +60,14 @@ export const es: Translations = {
   skuTitle:'Generador de SKU', sCatg:'Categoría', sType:'Tipo / Especie', sSize:'Tamaño / Variante', sSeq:'Secuencia inicial',
   skuHelp:'El SKU se construye con CATEGORÍA · TIPO · TAMAÑO · SECUENCIA. La secuencia se incrementa automáticamente en cada producto del lote.',
   preview:'Vista previa', genBatch:'Generar lote de 6', batchTitle:'Próximos SKU del lote', apply:'Asignar y crear',
-  supTitle:'Proveedores', supAdd:'Agregar proveedor', contact:'Contacto', sProducts:'productos', onTime:'A tiempo', leadTime:'Entrega', days:'días', lastOrder:'Última orden', newPO:'Nueva orden'
+  supTitle:'Proveedores', supAdd:'Agregar proveedor', contact:'Contacto', sProducts:'productos', onTime:'A tiempo', leadTime:'Entrega', days:'días', lastOrder:'Última orden', newPO:'Nueva orden',
+  nav_ai:'Asistente IA', nav_settings:'Ajustes',
+  aiTitle:'Asistente de inventario', aiSub:'Pregunta sobre tu stock, órdenes y proveedores', aiPh:'Escribe tu pregunta…', aiSend:'Enviar', aiClear:'Limpiar chat',
+  aiNoKey:'Configura tu clave de API de Anthropic en Ajustes para activar el asistente.', aiNoKeyLink:'Ir a Ajustes',
+  aiChip1:'¿Qué productos están bajos?', aiChip2:'¿Qué ordenar esta semana?', aiChip3:'Resumen del inventario', aiChip4:'Valor por categoría',
+  settingsTitle:'Ajustes', settingsSub:'Configuración de la cuenta y el asistente IA',
+  skApiKey:'Clave de API de Anthropic', skApiKeyPh:'sk-ant-api03-…', skApiKeySave:'Guardar clave', skApiKeyClear:'Eliminar', skApiKeyHint:'Tu clave se guarda localmente en este navegador y nunca se comparte.',
+  skApiKeyOk:'Clave guardada correctamente', skStoreName:'Nombre de la clínica', skStoreVal:'Veterinaria El Campo', skSaved:'Guardado'
 };
 
 export const en: Translations = {
@@ -86,5 +98,12 @@ export const en: Translations = {
   skuTitle:'SKU generator', sCatg:'Category', sType:'Type / Species', sSize:'Size / Variant', sSeq:'Start sequence',
   skuHelp:'The SKU is built from CATEGORY · TYPE · SIZE · SEQUENCE. The sequence auto-increments for each product in the batch.',
   preview:'Preview', genBatch:'Generate batch of 6', batchTitle:'Next batch SKUs', apply:'Assign & create',
-  supTitle:'Suppliers', supAdd:'Add supplier', contact:'Contact', sProducts:'products', onTime:'On-time', leadTime:'Lead time', days:'days', lastOrder:'Last order', newPO:'New order'
+  supTitle:'Suppliers', supAdd:'Add supplier', contact:'Contact', sProducts:'products', onTime:'On-time', leadTime:'Lead time', days:'days', lastOrder:'Last order', newPO:'New order',
+  nav_ai:'AI Assistant', nav_settings:'Settings',
+  aiTitle:'Inventory Assistant', aiSub:'Ask about your stock, orders, and suppliers', aiPh:'Type your question…', aiSend:'Send', aiClear:'Clear chat',
+  aiNoKey:'Configure your Anthropic API key in Settings to enable the assistant.', aiNoKeyLink:'Go to Settings',
+  aiChip1:'Which products are low?', aiChip2:'What to order this week?', aiChip3:'Inventory summary', aiChip4:'Value by category',
+  settingsTitle:'Settings', settingsSub:'Account and AI assistant configuration',
+  skApiKey:'Anthropic API Key', skApiKeyPh:'sk-ant-api03-…', skApiKeySave:'Save key', skApiKeyClear:'Remove', skApiKeyHint:'Your key is stored locally in this browser and never shared.',
+  skApiKeyOk:'Key saved successfully', skStoreName:'Clinic name', skStoreVal:'El Campo Veterinary', skSaved:'Saved'
 };

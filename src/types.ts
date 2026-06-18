@@ -1,4 +1,10 @@
-export type Screen = 'dashboard' | 'inventory' | 'product' | 'po' | 'poDetail' | 'bc' | 'sku' | 'sup';
+export type Screen = 'dashboard' | 'inventory' | 'product' | 'po' | 'poDetail' | 'bc' | 'sku' | 'sup' | 'ai' | 'settings';
+
+export interface AIMessage {
+  role: 'user' | 'assistant';
+  content: string;
+  loading?: boolean;
+}
 export type Theme = 'light' | 'dark';
 export type Lang = 'es' | 'en';
 

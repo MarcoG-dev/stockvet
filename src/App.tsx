@@ -1,8 +1,9 @@
-import React, { useState, useRef, useCallback } from 'react';
+import React, { useState, useRef, useCallback, useEffect } from 'react';
+import Anthropic from '@anthropic-ai/sdk';
 import { money, num, generateBarcode, ValueChart } from './utils';
 import { es as esT, en as enT } from './i18n';
 import { initialProducts, initialPOs, initialHistory, supMeta, catMeta, bins, initialQueue } from './data';
-import type { Product, PO, HistoryEntry, QueueItem, Screen, Theme, Lang } from './types';
+import type { Product, PO, HistoryEntry, QueueItem, Screen, Theme, Lang, AIMessage } from './types';
 
 const SS: React.CSSProperties = { fontFamily: "-apple-system,BlinkMacSystemFont,'San Francisco','Segoe UI',Helvetica,sans-serif" };
 
@@ -34,6 +35,87 @@ export default function App() {
   const [pos, setPos] = useState<PO[]>(initialPOs);
   const [history, setHistory] = useState<HistoryEntry[]>(initialHistory);
   const toastTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  // AI Assistant state
+  const [apiKey, setApiKey] = useState<string>(() => localStorage.getItem('sv_apikey') || '');
+  const [apiKeyInput, setApiKeyInput] = useState('');
+  const [aiMessages, setAiMessages] = useState<AIMessage[]>([]);
+  const [aiInput, setAiInput] = useState('');
+  const [aiLoading, setAiLoading] = useState(false);
+  const aiScrollRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => { if (apiKey) setApiKeyInput(apiKey); }, []);
+
+  useEffect(() => {
+    if (aiScrollRef.current) aiScrollRef.current.scrollTop = aiScrollRef.current.scrollHeight;
+  }, [aiMessages]);
+
+  const saveApiKey = () => {
+    const k = apiKeyInput.trim();
+    if (!k) return;
+    localStorage.setItem('sv_apikey', k);
+    setApiKey(k);
+    notify(T.skApiKeyOk);
+  };
+
+  const clearApiKey = () => {
+    localStorage.removeItem('sv_apikey');
+    setApiKey('');
+    setApiKeyInput('');
+  };
+
+  const buildSystemPrompt = () => {
+    const prods = products.map(p => {
+      const total = p.c + p.n + p.s;
+      const status = total <= 0 ? 'AGOTADO' : total <= p.reorder ? 'BAJO STOCK' : 'OK';
+      return `  - ${p.es} | SKU: ${p.sku} | Central: ${p.c}, Norte: ${p.n}, POS: ${p.s} (Total: ${total}) | Reorden: ${p.reorder} | Costo: $${p.cost} | Precio: $${p.price} | Estado: ${status}`;
+    }).join('\n');
+    const poSummary = pos.map(po => `  - ${po.num} (${po.sup}): ${po.status}, ${po.lines.length} artículos`).join('\n');
+    return `Eres el asistente de inventario de StockVet, una app de gestión de inventario veterinario para "${ES ? 'Veterinaria El Campo' : 'El Campo Veterinary'}" con 3 ubicaciones: Bodega Central, Sucursal Norte y Punto de Venta.
+
+INVENTARIO ACTUAL (${products.length} productos):
+${prods}
+
+RESUMEN: ${nOut} agotados, ${nLow} con stock bajo, valor total ${money(invValue)}
+
+ÓRDENES DE COMPRA:
+${poSummary}
+
+Responde en el idioma del usuario. Sé conciso, útil y específico. Usa los datos reales del inventario para tus respuestas. Puedes sugerir qué productos ordenar, analizar tendencias, calcular costos, y dar recomendaciones prácticas.`;
+  };
+
+  const sendAI = async (text?: string) => {
+    const msg = (text || aiInput).trim();
+    if (!msg || aiLoading || !apiKey) return;
+    setAiInput('');
+    const userMsg: AIMessage = { role: 'user', content: msg };
+    const placeholderMsg: AIMessage = { role: 'assistant', content: '', loading: true };
+    setAiMessages(prev => [...prev, userMsg, placeholderMsg]);
+    setAiLoading(true);
+    try {
+      const client = new Anthropic({ apiKey, dangerouslyAllowBrowser: true });
+      const history2 = aiMessages.filter(m => !m.loading).map(m => ({ role: m.role, content: m.content }));
+      let full = '';
+      const stream = client.messages.stream({
+        model: 'claude-opus-4-8',
+        max_tokens: 1024,
+        system: buildSystemPrompt(),
+        messages: [...history2, { role: 'user', content: msg }],
+        thinking: { type: 'adaptive' },
+      });
+      stream.on('text', (chunk) => {
+        full += chunk;
+        setAiMessages(prev => prev.map((m, i) => i === prev.length - 1 ? { ...m, content: full, loading: false } : m));
+      });
+      await stream.finalMessage();
+      if (!full) setAiMessages(prev => prev.map((m, i) => i === prev.length - 1 ? { ...m, content: '(sin respuesta)', loading: false } : m));
+    } catch (err: unknown) {
+      const msg2 = err instanceof Error ? err.message : 'Error desconocido';
+      setAiMessages(prev => prev.map((m, i) => i === prev.length - 1 ? { ...m, content: `Error: ${msg2}`, loading: false } : m));
+    } finally {
+      setAiLoading(false);
+    }
+  };
 
   const ES = lang === 'es';
   const T = ES ? esT : enT;
@@ -256,6 +338,7 @@ export default function App() {
           <button onClick={() => setScreen('bc')} style={navItem(screen === 'bc')}>▥ {T.nav_bc}</button>
           <button onClick={() => setScreen('sku')} style={navItem(screen === 'sku')}>⌗ {T.nav_sku}</button>
           <button onClick={() => setScreen('sup')} style={navItem(screen === 'sup')}>⚇ {T.nav_sup}</button>
+          <button onClick={() => setScreen('ai')} style={{ ...navItem(screen === 'ai'), background: screen === 'ai' ? 'var(--c-nav-active)' : 'linear-gradient(135deg,rgba(0,163,122,.08),rgba(92,106,196,.08))', border: screen === 'ai' ? 'none' : '1px solid var(--c-border-2)' }}>✦ {T.nav_ai}</button>
           <div style={{ marginTop: 'auto', background: 'var(--c-surface-2)', border: '1px solid var(--c-border-2)', borderRadius: 11, padding: 13 }}>
             <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 7 }}>
               <span style={{ width: 7, height: 7, borderRadius: '50%', background: 'var(--c-primary)' }} />
@@ -265,6 +348,7 @@ export default function App() {
               <div style={{ width: '68%', height: '100%', background: 'var(--c-primary)', borderRadius: 3 }} />
             </div>
           </div>
+          <button onClick={() => setScreen('settings')} style={{ ...navItem(screen === 'settings'), marginTop: 6 }}>⚙ {T.nav_settings}</button>
         </nav>
 
         {/* MAIN CONTENT */}
@@ -893,6 +977,159 @@ export default function App() {
                       </div>
                     );
                   })}
+                </div>
+              </div>
+            )}
+
+            {/* AI ASSISTANT */}
+            {screen === 'ai' && (
+              <div style={{ animation: 'svfade .25s ease', maxWidth: 780 }}>
+                <div style={{ display: 'flex', alignItems: 'flex-end', justifyContent: 'space-between', gap: 16, marginBottom: 20 }}>
+                  <div>
+                    <h1 style={{ margin: 0, fontSize: 24, fontWeight: 700, letterSpacing: '-0.03em' }}>{T.aiTitle}</h1>
+                    <p style={{ margin: '5px 0 0', fontSize: 13, color: 'var(--c-sub)' }}>{T.aiSub}</p>
+                  </div>
+                  {apiKey && aiMessages.length > 0 && (
+                    <button onClick={() => setAiMessages([])} style={btn}>{T.aiClear}</button>
+                  )}
+                </div>
+
+                {!apiKey ? (
+                  <div style={{ ...cardStyle, textAlign: 'center', padding: '40px 30px' }}>
+                    <div style={{ fontSize: 36, marginBottom: 14 }}>✦</div>
+                    <p style={{ margin: '0 0 6px', fontSize: 15, fontWeight: 600 }}>{T.aiNoKey}</p>
+                    <button onClick={() => setScreen('settings')} style={{ ...btnPrimary, marginTop: 14 }}>{T.aiNoKeyLink}</button>
+                  </div>
+                ) : (
+                  <>
+                    {aiMessages.length === 0 && (
+                      <div style={{ marginBottom: 16 }}>
+                        <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8 }}>
+                          {[T.aiChip1, T.aiChip2, T.aiChip3, T.aiChip4].map((chip) => (
+                            <button key={chip} onClick={() => sendAI(chip)} style={{ padding: '8px 14px', borderRadius: 20, border: '1px solid var(--c-border)', background: 'var(--c-surface)', color: 'var(--c-text)', fontSize: 12.5, fontWeight: 500, cursor: 'pointer', fontFamily: 'inherit' }}>{chip}</button>
+                          ))}
+                        </div>
+                      </div>
+                    )}
+
+                    <div ref={aiScrollRef} style={{ ...cardStyle, padding: 0, minHeight: 340, maxHeight: 480, overflowY: 'auto', display: 'flex', flexDirection: 'column' }}>
+                      {aiMessages.length === 0 ? (
+                        <div style={{ flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center', flexDirection: 'column', gap: 10, color: 'var(--c-faint)', padding: 40 }}>
+                          <div style={{ fontSize: 32 }}>✦</div>
+                          <p style={{ margin: 0, fontSize: 13, fontWeight: 500 }}>Powered by Claude</p>
+                        </div>
+                      ) : (
+                        <div style={{ display: 'flex', flexDirection: 'column', gap: 0 }}>
+                          {aiMessages.map((m, i) => (
+                            <div key={i} style={{ padding: '14px 18px', borderBottom: '1px solid var(--c-border-2)', background: m.role === 'user' ? 'var(--c-surface-2)' : 'var(--c-surface)' }}>
+                              <div style={{ display: 'flex', gap: 11, alignItems: 'flex-start' }}>
+                                <div style={{ width: 28, height: 28, borderRadius: 8, flexShrink: 0, display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 12, fontWeight: 700, color: '#fff', background: m.role === 'user' ? 'linear-gradient(140deg,#8a55d6,#5c6ac4)' : 'linear-gradient(140deg,#00a37a,#006e52)' }}>
+                                  {m.role === 'user' ? 'MR' : '✦'}
+                                </div>
+                                <div style={{ flex: 1, minWidth: 0 }}>
+                                  <p style={{ margin: '0 0 2px', fontSize: 11, fontWeight: 600, color: 'var(--c-faint)', textTransform: 'uppercase', letterSpacing: '.04em' }}>{m.role === 'user' ? 'M. Ramírez' : 'StockVet IA'}</p>
+                                  {m.loading ? (
+                                    <div style={{ display: 'flex', gap: 4, alignItems: 'center', height: 20 }}>
+                                      {[0, 1, 2].map(d => <span key={d} style={{ width: 7, height: 7, borderRadius: '50%', background: 'var(--c-primary)', display: 'inline-block', animation: `svpop .9s ease ${d * 0.2}s infinite` }} />)}
+                                    </div>
+                                  ) : (
+                                    <p style={{ margin: 0, fontSize: 13.5, lineHeight: 1.65, whiteSpace: 'pre-wrap', wordBreak: 'break-word' }}>{m.content}</p>
+                                  )}
+                                </div>
+                              </div>
+                            </div>
+                          ))}
+                        </div>
+                      )}
+                    </div>
+
+                    <div style={{ display: 'flex', gap: 9, marginTop: 12 }}>
+                      <input
+                        value={aiInput}
+                        onChange={e => setAiInput(e.target.value)}
+                        onKeyDown={e => e.key === 'Enter' && !e.shiftKey && sendAI()}
+                        placeholder={T.aiPh}
+                        disabled={aiLoading}
+                        style={{ ...inputStyle, flex: 1, opacity: aiLoading ? 0.6 : 1 }}
+                      />
+                      <button onClick={() => sendAI()} disabled={aiLoading || !aiInput.trim()} style={{ ...btnPrimary, opacity: (aiLoading || !aiInput.trim()) ? 0.5 : 1, cursor: (aiLoading || !aiInput.trim()) ? 'default' : 'pointer', flexShrink: 0 }}>
+                        {aiLoading ? '…' : T.aiSend}
+                      </button>
+                    </div>
+                    <p style={{ margin: '8px 0 0', fontSize: 10.5, color: 'var(--c-faint)', textAlign: 'center' }}>Powered by Claude · claude-opus-4-8</p>
+                  </>
+                )}
+              </div>
+            )}
+
+            {/* SETTINGS */}
+            {screen === 'settings' && (
+              <div style={{ animation: 'svfade .25s ease', maxWidth: 640 }}>
+                <div style={{ marginBottom: 26 }}>
+                  <h1 style={{ margin: 0, fontSize: 24, fontWeight: 700, letterSpacing: '-0.03em' }}>{T.settingsTitle}</h1>
+                  <p style={{ margin: '5px 0 0', fontSize: 13, color: 'var(--c-sub)' }}>{T.settingsSub}</p>
+                </div>
+
+                <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
+                  <div style={cardStyle}>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 18 }}>
+                      <div style={{ width: 34, height: 34, borderRadius: 9, background: 'linear-gradient(140deg,#00a37a,#006e52)', display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#fff', fontSize: 16 }}>✦</div>
+                      <div>
+                        <p style={{ margin: 0, fontSize: 14, fontWeight: 700 }}>Claude AI</p>
+                        <p style={{ margin: '2px 0 0', fontSize: 11.5, color: 'var(--c-faint)' }}>Anthropic · claude-opus-4-8</p>
+                      </div>
+                      {apiKey && <span style={{ marginLeft: 'auto', padding: '3px 10px', borderRadius: 20, background: 'var(--c-green-bg)', color: 'var(--c-green-text)', fontSize: 11.5, fontWeight: 600 }}>● Activo</span>}
+                    </div>
+                    <label style={{ fontSize: 11.5, fontWeight: 600, color: 'var(--c-sub)', display: 'block', marginBottom: 6 }}>{T.skApiKey}</label>
+                    <div style={{ display: 'flex', gap: 9 }}>
+                      <input
+                        type="password"
+                        value={apiKeyInput}
+                        onChange={e => setApiKeyInput(e.target.value)}
+                        placeholder={T.skApiKeyPh}
+                        style={{ ...inputStyle, flex: 1 }}
+                      />
+                      <button onClick={saveApiKey} disabled={!apiKeyInput.trim()} style={{ ...btnPrimary, opacity: apiKeyInput.trim() ? 1 : 0.5, flexShrink: 0 }}>{T.skApiKeySave}</button>
+                      {apiKey && <button onClick={clearApiKey} style={{ ...btn, color: 'var(--c-red-text)', flexShrink: 0 }}>{T.skApiKeyClear}</button>}
+                    </div>
+                    <p style={{ margin: '10px 0 0', fontSize: 11.5, color: 'var(--c-faint)' }}>🔒 {T.skApiKeyHint}</p>
+                  </div>
+
+                  <div style={cardStyle}>
+                    <p style={{ margin: '0 0 16px', fontSize: 14, fontWeight: 700 }}>{ES ? 'Información de la clínica' : 'Clinic information'}</p>
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
+                      <div>
+                        <label style={{ fontSize: 11.5, fontWeight: 600, color: 'var(--c-sub)', display: 'block', marginBottom: 6 }}>{T.skStoreName}</label>
+                        <input defaultValue={T.skStoreVal} style={{ ...inputStyle }} />
+                      </div>
+                      <div>
+                        <label style={{ fontSize: 11.5, fontWeight: 600, color: 'var(--c-sub)', display: 'block', marginBottom: 6 }}>{ES ? 'Zona horaria' : 'Timezone'}</label>
+                        <select style={{ ...selectStyle }}>
+                          <option>America/Mexico_City (UTC-6)</option>
+                          <option>America/Bogota (UTC-5)</option>
+                          <option>America/Lima (UTC-5)</option>
+                          <option>America/Santiago (UTC-4)</option>
+                          <option>America/Buenos_Aires (UTC-3)</option>
+                        </select>
+                      </div>
+                    </div>
+                    <div style={{ marginTop: 16, display: 'flex', justifyContent: 'flex-end' }}>
+                      <button onClick={() => notify(T.skSaved)} style={btnPrimary}>{ES ? 'Guardar cambios' : 'Save changes'}</button>
+                    </div>
+                  </div>
+
+                  <div style={cardStyle}>
+                    <p style={{ margin: '0 0 16px', fontSize: 14, fontWeight: 700 }}>{ES ? 'Apariencia' : 'Appearance'}</p>
+                    <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+                      <div>
+                        <p style={{ margin: 0, fontSize: 13, fontWeight: 500 }}>{ES ? 'Modo oscuro' : 'Dark mode'}</p>
+                        <p style={{ margin: '2px 0 0', fontSize: 11.5, color: 'var(--c-faint)' }}>{ES ? 'También disponible en la barra superior' : 'Also available in the top bar'}</p>
+                      </div>
+                      <button onClick={() => setTheme(theme === 'dark' ? 'light' : 'dark')} style={{ width: 48, height: 26, borderRadius: 13, border: 'none', background: theme === 'dark' ? 'var(--c-primary)' : 'var(--c-border)', cursor: 'pointer', position: 'relative', transition: 'background .2s' }}>
+                        <span style={{ position: 'absolute', top: 3, left: theme === 'dark' ? 24 : 4, width: 20, height: 20, borderRadius: '50%', background: '#fff', transition: 'left .2s', boxShadow: '0 1px 3px rgba(0,0,0,.2)' }} />
+                      </button>
+                    </div>
+                  </div>
                 </div>
               </div>
             )}
