@@ -38,11 +38,16 @@ export default function App() {
 
   // PO Create state
   const [newPOSup, setNewPOSup] = useState('s1');
-  const [newPOLines, setNewPOLines] = useState<Array<{pid:string;qty:number;cost:number}>>([]);
+  const [newPOLines, setNewPOLines] = useState<Array<{pid:string;qty:number;cost:number;retail:number}>>([]);
   const [newPOExp, setNewPOExp] = useState('');
   const [poSearch, setPoSearch] = useState('');
   const [poColsOpen, setPoColsOpen] = useState(false);
-  const [poCols, setPoCols] = useState({sku:true,bc:false,cat:false,margin:false});
+  const [poCols, setPoCols] = useState({sku:false,bc:false,cat:false,margin:true});
+  // PO detail edit mode
+  const [poEditMode, setPoEditMode] = useState(false);
+  const [poEditLines, setPoEditLines] = useState<Array<{pid:string;qty:number;cost:number;retail:number}>>([]);
+  const [poAddSearch, setPoAddSearch] = useState('');
+  const [poAddDropOpen, setPoAddDropOpen] = useState(false);
   // Add product state
   const [addProdOpen, setAddProdOpen] = useState(false);
   const [npEs, setNpEs] = useState('');
@@ -165,20 +170,20 @@ Responde en el idioma del usuario. Sé conciso, útil y específico. Usa los dat
     if (newPOLines.find(l => l.pid === pid)) { notify(ES ? 'Producto ya en la orden' : 'Product already in order'); return; }
     const p = pById(pid);
     if (!p) return;
-    setNewPOLines(prev => [...prev, {pid, qty:1, cost:p.cost}]);
+    setNewPOLines(prev => [...prev, {pid, qty:1, cost:p.cost, retail:p.price}]);
+    setPoSearch('');
   };
 
   const removeLineItem = (pid: string) => setNewPOLines(prev => prev.filter(l => l.pid !== pid));
 
-  const updateLineQty = (pid: string, v: string) => {
-    const n = Math.max(1, parseInt(v) || 1);
-    setNewPOLines(prev => prev.map(l => l.pid === pid ? {...l, qty:n} : l));
-  };
+  const updateLineQty = (pid: string, v: string) =>
+    setNewPOLines(prev => prev.map(l => l.pid === pid ? {...l, qty:Math.max(1, parseInt(v)||1)} : l));
 
-  const updateLineCost = (pid: string, v: string) => {
-    const n = parseFloat(v) || 0;
-    setNewPOLines(prev => prev.map(l => l.pid === pid ? {...l, cost:n} : l));
-  };
+  const updateLineCost = (pid: string, v: string) =>
+    setNewPOLines(prev => prev.map(l => l.pid === pid ? {...l, cost:parseFloat(v)||0} : l));
+
+  const updateLineRetail = (pid: string, v: string) =>
+    setNewPOLines(prev => prev.map(l => l.pid === pid ? {...l, retail:parseFloat(v)||0} : l));
 
   const savePO = (status: 'draft' | 'ordered') => {
     if (newPOLines.length === 0) { notify(ES ? 'Agrega al menos un producto' : 'Add at least one product'); return; }
@@ -189,11 +194,54 @@ Responde en el idioma del usuario. Sé conciso, útil y específico. Usa los dat
       exp: newPOExp || (ES ? 'Por definir' : 'TBD'),
       lines: newPOLines.map(l => ({pid:l.pid, qty:l.qty, recd:0, cost:l.cost})),
     };
+    // Update product prices and costs if changed
+    setProducts(prev => prev.map(p => {
+      const l = newPOLines.find(x => x.pid === p.id);
+      if (!l) return p;
+      return {...p, cost: l.cost !== p.cost ? l.cost : p.cost, price: l.retail !== p.price ? l.retail : p.price};
+    }));
     setPos(prev => [newPO, ...prev]);
     setNewPOLines([]); setNewPOExp(''); setPoSearch('');
     setSelPO(newPO.id); setScreen('poDetail');
     notify(status === 'draft' ? (ES ? 'Borrador guardado' : 'Draft saved') : (ES ? `${newNum} enviada` : `${newNum} submitted`));
   };
+
+  // PO Detail edit mode helpers
+  const startEditPO = (po: PO) => {
+    setPoEditLines(po.lines.map(l => {
+      const p = pById(l.pid);
+      return {pid:l.pid, qty:l.qty, cost:l.cost, retail:p?.price||0};
+    }));
+    setPoAddSearch(''); setPoAddDropOpen(false);
+    setPoEditMode(true);
+  };
+
+  const saveEditPO = () => {
+    if (!selPOData) return;
+    setProducts(prev => prev.map(p => {
+      const l = poEditLines.find(x => x.pid === p.id);
+      if (!l) return p;
+      return {...p, cost:l.cost!==p.cost?l.cost:p.cost, price:l.retail!==p.price?l.retail:p.price};
+    }));
+    setPos(prev => prev.map(po => po.id !== selPO ? po : {
+      ...po, lines: poEditLines.map(l => ({pid:l.pid, qty:l.qty, recd:po.lines.find(x=>x.pid===l.pid)?.recd||0, cost:l.cost}))
+    }));
+    setPoEditMode(false);
+    notify(ES ? 'Orden actualizada' : 'Order updated');
+  };
+
+  const addEditLine = (pid: string) => {
+    if (poEditLines.find(l => l.pid === pid)) return;
+    const p = pById(pid);
+    if (!p) return;
+    setPoEditLines(prev => [...prev, {pid, qty:1, cost:p.cost, retail:p.price}]);
+    setPoAddSearch(''); setPoAddDropOpen(false);
+  };
+
+  const updateEditField = (pid: string, field: 'qty'|'cost'|'retail', v: string) =>
+    setPoEditLines(prev => prev.map(l => l.pid===pid ? {...l, [field]: field==='qty' ? Math.max(1,parseInt(v)||1) : parseFloat(v)||0} : l));
+
+  const removeEditLine = (pid: string) => setPoEditLines(prev => prev.filter(l => l.pid !== pid));
 
   const addProduct = () => {
     if (!npEs.trim()) { notify(ES ? 'El nombre es requerido' : 'Name is required'); return; }
@@ -646,20 +694,32 @@ Responde en el idioma del usuario. Sé conciso, útil y específico. Usa los dat
                 <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 16, marginBottom: 16 }}>
                   <div style={cardStyle}>
                     <h3 style={{ margin: '0 0 14px', fontSize: 14, fontWeight: 600 }}>{T.details}</h3>
-                    {[
-                      [T.fCat, selProdData.catName],
-                      [T.fSup, supMeta[selProdData.sup].name],
-                      [T.fCost, selProdData.costTxt],
-                      [T.fPrice, selProdData.priceTxt],
-                      [T.fMargin, selProdData.margin],
-                      [T.fReorder, selProdData.reorderTxt],
-                      [T.fBin, selProdData.bin],
-                    ].map(([label, val], i, arr) => (
-                      <div key={i} style={{ display: 'flex', justifyContent: 'space-between', padding: '9px 0', borderBottom: i < arr.length - 1 ? '1px solid var(--c-border-2)' : 'none' }}>
-                        <span style={{ fontSize: 12.5, color: 'var(--c-sub)' }}>{label}</span>
-                        <span style={{ fontSize: 12.5, fontWeight: 600, fontVariantNumeric: 'tabular-nums', color: label === T.fMargin ? 'var(--c-green-text)' : undefined }}>{val}</span>
-                      </div>
-                    ))}
+                    {(() => {
+                      const rowS = (last?: boolean): React.CSSProperties => ({ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '7px 0', borderBottom: last ? 'none' : '1px solid var(--c-border-2)' });
+                      const lblS: React.CSSProperties = { fontSize: 12.5, color: 'var(--c-sub)' };
+                      const valS: React.CSSProperties = { fontSize: 12.5, fontWeight: 600, fontVariantNumeric: 'tabular-nums' };
+                      const inpS: React.CSSProperties = { height: 30, border: '1px solid var(--c-border)', background: 'var(--c-surface-2)', borderRadius: 7, textAlign: 'right', padding: '0 8px', fontSize: 12.5, fontWeight: 600, color: 'var(--c-text)', outline: 'none', fontFamily: 'inherit', fontVariantNumeric: 'tabular-nums' };
+                      return (
+                        <>
+                          <div style={rowS()}><span style={lblS}>{T.fCat}</span><span style={valS}>{selProdData.catName}</span></div>
+                          <div style={rowS()}><span style={lblS}>{T.fSup}</span><span style={valS}>{supMeta[selProdData.sup].name}</span></div>
+                          <div style={rowS()}>
+                            <span style={lblS}>{T.fCost}</span>
+                            <input type="number" min="0" step="0.01" value={selProdData.cost} onChange={e => setProducts(prev => prev.map(p => p.id === selProd ? {...p, cost: parseFloat(e.target.value) || 0} : p))} style={{ ...inpS, width: 90 }} />
+                          </div>
+                          <div style={rowS()}>
+                            <span style={lblS}>{T.fPrice}</span>
+                            <input type="number" min="0" step="0.01" value={selProdData.price} onChange={e => setProducts(prev => prev.map(p => p.id === selProd ? {...p, price: parseFloat(e.target.value) || 0} : p))} style={{ ...inpS, width: 90 }} />
+                          </div>
+                          <div style={rowS()}><span style={lblS}>{T.fMargin}</span><span style={{ ...valS, color: 'var(--c-green-text)' }}>{selProdData.margin}</span></div>
+                          <div style={rowS()}>
+                            <span style={lblS}>{T.fReorder}</span>
+                            <input type="number" min="0" step="1" value={selProdData.reorder} onChange={e => setProducts(prev => prev.map(p => p.id === selProd ? {...p, reorder: parseInt(e.target.value) || 0} : p))} style={{ ...inpS, width: 70 }} />
+                          </div>
+                          <div style={rowS(true)}><span style={lblS}>{T.fBin}</span><span style={valS}>{selProdData.bin}</span></div>
+                        </>
+                      );
+                    })()}
                   </div>
                   <div style={{ ...cardStyle, display: 'flex', flexDirection: 'column' }}>
                     <h3 style={{ margin: '0 0 14px', fontSize: 14, fontWeight: 600 }}>{T.barcode}</h3>
@@ -776,11 +836,15 @@ Responde en el idioma del usuario. Sé conciso, útil y específico. Usa los dat
             {/* PO DETAIL */}
             {screen === 'poDetail' && selPOData && (() => {
               const b = poBadge(selPOData.status);
-              const sub = poTotal(selPOData);
-              const canReceive = selPOData.status !== 'received' && selPOData.status !== 'draft';
+              const sub = poEditMode ? poEditLines.reduce((a, l) => a + l.qty * l.cost, 0) : poTotal(selPOData);
+              const canReceive = !poEditMode && selPOData.status !== 'received' && selPOData.status !== 'draft';
+              const canEdit = !poEditMode && (selPOData.status === 'draft' || selPOData.status === 'ordered');
+              const qEdit = poAddSearch.trim().toLowerCase();
+              const editDrop = poEditMode && qEdit ? allProds.filter(p => p.name.toLowerCase().includes(qEdit) || p.sku.toLowerCase().includes(qEdit) || p.bc.includes(qEdit)).slice(0, 8) : [];
+              const inpE: React.CSSProperties = { height: 32, border: '1px solid var(--c-border)', background: 'var(--c-surface-2)', borderRadius: 7, textAlign: 'right', padding: '0 7px', fontSize: 13, fontWeight: 600, color: 'var(--c-text)', outline: 'none', fontFamily: 'inherit', fontVariantNumeric: 'tabular-nums' };
               return (
                 <div style={{ animation: 'svfade .25s ease' }}>
-                  <button onClick={() => setScreen('po')} style={{ background: 'none', border: 'none', color: 'var(--c-sub)', fontSize: 12.5, fontWeight: 600, cursor: 'pointer', padding: 0, marginBottom: 14, fontFamily: 'inherit' }}>← {T.poTitle}</button>
+                  <button onClick={() => { setPoEditMode(false); setPoAddSearch(''); setScreen('po'); }} style={{ background: 'none', border: 'none', color: 'var(--c-sub)', fontSize: 12.5, fontWeight: 600, cursor: 'pointer', padding: 0, marginBottom: 14, fontFamily: 'inherit' }}>← {T.poTitle}</button>
                   <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', gap: 16, marginBottom: 20 }}>
                     <div>
                       <div style={{ display: 'flex', alignItems: 'center', gap: 11 }}>
@@ -791,9 +855,14 @@ Responde en el idioma del usuario. Sé conciso, útil y específico. Usa los dat
                       </div>
                       <p style={{ margin: '6px 0 0', fontSize: 13, color: 'var(--c-sub)' }}>{supMeta[selPOData.sup].name} · {supMeta[selPOData.sup].contact}</p>
                     </div>
-                    {canReceive && (
-                      <button onClick={receivePO} style={{ ...btnPrimary, height: 38, padding: '0 18px' }}>↓ {T.receiveItems}</button>
-                    )}
+                    <div style={{ display: 'flex', gap: 9, flexShrink: 0 }}>
+                      {canReceive && <button onClick={receivePO} style={{ ...btnPrimary, height: 38, padding: '0 18px' }}>↓ {T.receiveItems}</button>}
+                      {canEdit && <button onClick={() => startEditPO(selPOData)} style={{ ...btn, height: 38, padding: '0 18px' }}>✎ {ES ? 'Editar' : 'Edit'}</button>}
+                      {poEditMode && <>
+                        <button onClick={() => { setPoEditMode(false); setPoAddSearch(''); }} style={{ ...btn, height: 38, padding: '0 18px' }}>{T.cancel}</button>
+                        <button onClick={saveEditPO} style={{ ...btnPrimary, height: 38, padding: '0 18px' }}>{ES ? 'Guardar cambios' : 'Save changes'}</button>
+                      </>}
+                    </div>
                   </div>
 
                   <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3,1fr)', gap: 13, marginBottom: 16 }}>
@@ -809,47 +878,114 @@ Responde en el idioma del usuario. Sé conciso, útil y específico. Usa los dat
                     ))}
                   </div>
 
-                  <div style={{ background: 'var(--c-surface)', border: '1px solid var(--c-border)', borderRadius: 14, boxShadow: 'var(--c-shadow)', overflow: 'hidden', marginBottom: 16 }}>
+                  <div style={{ background: 'var(--c-surface)', border: '1px solid var(--c-border)', borderRadius: 14, boxShadow: 'var(--c-shadow)', overflow: 'visible', marginBottom: 16 }}>
                     <div style={{ overflowX: 'auto' }}>
-                      <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 13, minWidth: 760 }}>
+                      <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 13, minWidth: poEditMode ? 820 : 760 }}>
                         <thead>
                           <tr style={{ background: 'var(--c-surface-2)' }}>
-                            {[T.hProd, T.lOrdered, T.lRecd, T.lPending, T.cTotal, T.lRecvNow].map((h, i) => (
-                              <th key={i} style={{ textAlign: i === 0 ? 'left' : i === 5 ? 'center' : 'right', padding: i === 0 ? '10px 18px' : i === 5 ? '10px 18px' : '10px 12px', fontSize: 11, fontWeight: 600, color: 'var(--c-sub)', textTransform: 'uppercase', letterSpacing: '.04em' }}>{h}</th>
-                            ))}
+                            {poEditMode ? (
+                              <>
+                                <th style={{ textAlign: 'left', padding: '10px 18px', fontSize: 11, fontWeight: 600, color: 'var(--c-sub)', textTransform: 'uppercase', letterSpacing: '.04em' }}>{T.hProd}</th>
+                                <th style={{ textAlign: 'right', padding: '10px 12px', fontSize: 11, fontWeight: 600, color: 'var(--c-sub)', textTransform: 'uppercase', letterSpacing: '.04em' }}>{T.poQtyCol}</th>
+                                <th style={{ textAlign: 'right', padding: '10px 12px', fontSize: 11, fontWeight: 600, color: 'var(--c-sub)', textTransform: 'uppercase', letterSpacing: '.04em' }}>{T.poCostCol}</th>
+                                <th style={{ textAlign: 'right', padding: '10px 12px', fontSize: 11, fontWeight: 600, color: 'var(--c-sub)', textTransform: 'uppercase', letterSpacing: '.04em' }}>{T.poRetail}</th>
+                                <th style={{ textAlign: 'right', padding: '10px 12px', fontSize: 11, fontWeight: 600, color: 'var(--c-sub)', textTransform: 'uppercase', letterSpacing: '.04em' }}>{T.poColMargin}</th>
+                                <th style={{ textAlign: 'right', padding: '10px 18px', fontSize: 11, fontWeight: 600, color: 'var(--c-sub)', textTransform: 'uppercase', letterSpacing: '.04em' }}>{T.cTotal}</th>
+                                <th style={{ width: 36 }}></th>
+                              </>
+                            ) : (
+                              [T.hProd, T.lOrdered, T.lRecd, T.lPending, T.cTotal, T.lRecvNow].map((h, i) => (
+                                <th key={i} style={{ textAlign: i === 0 ? 'left' : i === 5 ? 'center' : 'right', padding: i === 0 ? '10px 18px' : i === 5 ? '10px 18px' : '10px 12px', fontSize: 11, fontWeight: 600, color: 'var(--c-sub)', textTransform: 'uppercase', letterSpacing: '.04em' }}>{h}</th>
+                              ))
+                            )}
                           </tr>
                         </thead>
                         <tbody>
-                          {selPOData.lines.map((ln, i) => {
-                            const p = pById(ln.pid);
-                            if (!p) return null;
-                            const pend = ln.qty - ln.recd;
-                            const k = selPOData.id + ':' + i;
-                            const recvVal = recv[k] !== undefined ? recv[k] : (pend > 0 ? String(pend) : '0');
-                            return (
-                              <tr key={i} style={{ borderTop: '1px solid var(--c-border-2)' }}>
-                                <td style={{ padding: '12px 18px' }}>
-                                  <div style={{ display: 'flex', alignItems: 'center', gap: 11 }}>
-                                    <div style={{ width: 32, height: 32, borderRadius: 8, background: p.catColor, color: '#fff', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 10.5, fontWeight: 700, flexShrink: 0 }}>{p.initials}</div>
-                                    <div style={{ minWidth: 0 }}>
-                                      <p style={{ margin: 0, fontWeight: 600, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', maxWidth: 240 }}>{p.name}</p>
-                                      <p style={{ margin: '2px 0 0', fontSize: 11, color: 'var(--c-faint)', fontVariantNumeric: 'tabular-nums' }}>{p.sku}</p>
+                          {poEditMode ? (
+                            poEditLines.map(l => {
+                              const p = pById(l.pid);
+                              if (!p) return null;
+                              const mg = l.retail > 0 ? Math.round((1 - l.cost / l.retail) * 100) : 0;
+                              return (
+                                <tr key={l.pid} style={{ borderTop: '1px solid var(--c-border-2)' }}>
+                                  <td style={{ padding: '10px 18px' }}>
+                                    <div style={{ display: 'flex', alignItems: 'center', gap: 11 }}>
+                                      <div style={{ width: 32, height: 32, borderRadius: 8, background: p.catColor, color: '#fff', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 10.5, fontWeight: 700, flexShrink: 0 }}>{p.initials}</div>
+                                      <div style={{ minWidth: 0 }}>
+                                        <p style={{ margin: 0, fontWeight: 600, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', maxWidth: 220 }}>{p.name}</p>
+                                        <p style={{ margin: '2px 0 0', fontSize: 11, color: 'var(--c-faint)', fontVariantNumeric: 'tabular-nums' }}>{p.sku}</p>
+                                      </div>
                                     </div>
-                                  </div>
-                                </td>
-                                <td style={{ padding: '12px', textAlign: 'right', fontVariantNumeric: 'tabular-nums' }}>{num(ln.qty)}</td>
-                                <td style={{ padding: '12px', textAlign: 'right', fontVariantNumeric: 'tabular-nums', color: 'var(--c-sub)' }}>{num(ln.recd)}</td>
-                                <td style={{ padding: '12px', textAlign: 'right', fontWeight: 600, fontVariantNumeric: 'tabular-nums', color: pend > 0 ? 'var(--c-yellow-text)' : 'var(--c-green-text)' }}>{num(pend)}</td>
-                                <td style={{ padding: '12px', textAlign: 'right', fontVariantNumeric: 'tabular-nums', color: 'var(--c-sub)' }}>{money(ln.qty * ln.cost)}</td>
-                                <td style={{ padding: '12px 18px', textAlign: 'center' }}>
-                                  <input value={recvVal} onChange={e => setRecv({ ...recv, [k]: e.target.value.replace(/[^0-9]/g, '') })} style={{ width: 64, height: 34, border: '1px solid var(--c-border)', background: 'var(--c-surface-2)', borderRadius: 8, textAlign: 'center', fontSize: 13, fontWeight: 600, color: 'var(--c-text)', outline: 'none', fontFamily: 'inherit', fontVariantNumeric: 'tabular-nums' }} />
-                                </td>
-                              </tr>
-                            );
-                          })}
+                                  </td>
+                                  <td style={{ padding: '10px 12px', textAlign: 'right' }}><input value={l.qty} onChange={e => updateEditField(l.pid, 'qty', e.target.value)} style={{ ...inpE, width: 56, textAlign: 'center' }} /></td>
+                                  <td style={{ padding: '10px 12px', textAlign: 'right' }}><input value={l.cost} onChange={e => updateEditField(l.pid, 'cost', e.target.value)} style={{ ...inpE, width: 80 }} /></td>
+                                  <td style={{ padding: '10px 12px', textAlign: 'right' }}><input value={l.retail} onChange={e => updateEditField(l.pid, 'retail', e.target.value)} style={{ ...inpE, width: 80 }} /></td>
+                                  <td style={{ padding: '10px 12px', textAlign: 'right', fontWeight: 600, fontSize: 12.5, color: mg >= 0 ? 'var(--c-green-text)' : 'var(--c-red-text)' }}>{mg}%</td>
+                                  <td style={{ padding: '10px 18px', textAlign: 'right', fontWeight: 700, fontVariantNumeric: 'tabular-nums' }}>{money(l.qty * l.cost)}</td>
+                                  <td style={{ padding: '10px 10px 10px 0', textAlign: 'center' }}>
+                                    <button onClick={() => removeEditLine(l.pid)} style={{ background: 'none', border: 'none', color: 'var(--c-faint)', cursor: 'pointer', fontSize: 18, lineHeight: 1, padding: '0 4px', fontFamily: 'inherit' }}>×</button>
+                                  </td>
+                                </tr>
+                              );
+                            })
+                          ) : (
+                            selPOData.lines.map((ln, i) => {
+                              const p = pById(ln.pid);
+                              if (!p) return null;
+                              const pend = ln.qty - ln.recd;
+                              const k = selPOData.id + ':' + i;
+                              const recvVal = recv[k] !== undefined ? recv[k] : (pend > 0 ? String(pend) : '0');
+                              return (
+                                <tr key={i} style={{ borderTop: '1px solid var(--c-border-2)' }}>
+                                  <td style={{ padding: '12px 18px' }}>
+                                    <div style={{ display: 'flex', alignItems: 'center', gap: 11 }}>
+                                      <div style={{ width: 32, height: 32, borderRadius: 8, background: p.catColor, color: '#fff', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 10.5, fontWeight: 700, flexShrink: 0 }}>{p.initials}</div>
+                                      <div style={{ minWidth: 0 }}>
+                                        <p style={{ margin: 0, fontWeight: 600, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', maxWidth: 240 }}>{p.name}</p>
+                                        <p style={{ margin: '2px 0 0', fontSize: 11, color: 'var(--c-faint)', fontVariantNumeric: 'tabular-nums' }}>{p.sku}</p>
+                                      </div>
+                                    </div>
+                                  </td>
+                                  <td style={{ padding: '12px', textAlign: 'right', fontVariantNumeric: 'tabular-nums' }}>{num(ln.qty)}</td>
+                                  <td style={{ padding: '12px', textAlign: 'right', fontVariantNumeric: 'tabular-nums', color: 'var(--c-sub)' }}>{num(ln.recd)}</td>
+                                  <td style={{ padding: '12px', textAlign: 'right', fontWeight: 600, fontVariantNumeric: 'tabular-nums', color: pend > 0 ? 'var(--c-yellow-text)' : 'var(--c-green-text)' }}>{num(pend)}</td>
+                                  <td style={{ padding: '12px', textAlign: 'right', fontVariantNumeric: 'tabular-nums', color: 'var(--c-sub)' }}>{money(ln.qty * ln.cost)}</td>
+                                  <td style={{ padding: '12px 18px', textAlign: 'center' }}>
+                                    <input value={recvVal} onChange={e => setRecv({ ...recv, [k]: e.target.value.replace(/[^0-9]/g, '') })} style={{ width: 64, height: 34, border: '1px solid var(--c-border)', background: 'var(--c-surface-2)', borderRadius: 8, textAlign: 'center', fontSize: 13, fontWeight: 600, color: 'var(--c-text)', outline: 'none', fontFamily: 'inherit', fontVariantNumeric: 'tabular-nums' }} />
+                                  </td>
+                                </tr>
+                              );
+                            })
+                          )}
                         </tbody>
                       </table>
                     </div>
+                    {poEditMode && (
+                      <div style={{ borderTop: '1px solid var(--c-border-2)', padding: '10px 18px', position: 'relative' }}>
+                        <div style={{ position: 'relative' }}>
+                          <span style={{ position: 'absolute', left: 10, top: '50%', transform: 'translateY(-50%)', color: 'var(--c-faint)', fontSize: 14 }}>⌕</span>
+                          <input value={poAddSearch} onChange={e => setPoAddSearch(e.target.value)} placeholder={T.poSearchPh} style={{ ...inputStyle, paddingLeft: 32, height: 36 }} />
+                          {poAddSearch && <button onClick={() => setPoAddSearch('')} style={{ position: 'absolute', right: 10, top: '50%', transform: 'translateY(-50%)', background: 'none', border: 'none', color: 'var(--c-faint)', cursor: 'pointer', fontSize: 16, fontFamily: 'inherit' }}>×</button>}
+                        </div>
+                        {editDrop.length > 0 && (
+                          <div style={{ position: 'absolute', left: 18, right: 18, top: '100%', background: 'var(--c-surface)', border: '1px solid var(--c-border)', borderRadius: 10, boxShadow: '0 8px 24px rgba(0,0,0,.15)', zIndex: 55, maxHeight: 260, overflowY: 'auto' }}>
+                            {editDrop.map(p => {
+                              const inEdit = poEditLines.some(l => l.pid === p.id);
+                              return (
+                                <div key={p.id} onClick={() => !inEdit && addEditLine(p.id)} style={{ display: 'flex', alignItems: 'center', gap: 11, padding: '10px 14px', borderBottom: '1px solid var(--c-border-2)', cursor: inEdit ? 'default' : 'pointer', opacity: inEdit ? 0.5 : 1 }}>
+                                  <div style={{ width: 32, height: 32, borderRadius: 8, background: p.catColor, color: '#fff', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 11, fontWeight: 700, flexShrink: 0 }}>{p.initials}</div>
+                                  <div style={{ flex: 1, minWidth: 0 }}>
+                                    <p style={{ margin: 0, fontSize: 13, fontWeight: 600, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{p.name}</p>
+                                    <p style={{ margin: '2px 0 0', fontSize: 11, color: 'var(--c-faint)' }}>{p.sku} · {money(p.cost)}</p>
+                                  </div>
+                                  <span style={{ fontSize: 12, fontWeight: 700, color: inEdit ? 'var(--c-sub)' : 'var(--c-primary)', flexShrink: 0 }}>{inEdit ? (ES ? 'Ya agregado' : 'Added') : (ES ? 'Agregar' : 'Add')}</span>
+                                </div>
+                              );
+                            })}
+                          </div>
+                        )}
+                      </div>
+                    )}
                     <div style={{ display: 'flex', justifyContent: 'flex-end', padding: '16px 18px', borderTop: '1px solid var(--c-border-2)', background: 'var(--c-surface-2)' }}>
                       <div style={{ width: 260, display: 'flex', flexDirection: 'column', gap: 7 }}>
                         <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 13 }}>
@@ -876,163 +1012,159 @@ Responde en el idioma del usuario. Sé conciso, útil y específico. Usa los dat
             {/* PO CREATE */}
             {screen === 'poCreate' && (() => {
               const q2 = poSearch.trim().toLowerCase();
-              const searchResults = allProds.filter(p =>
-                !q2 || p.name.toLowerCase().includes(q2) || p.sku.toLowerCase().includes(q2) || p.bc.includes(q2)
-              );
+              const searchDrop = q2 ? allProds.filter(p =>
+                p.name.toLowerCase().includes(q2) || p.sku.toLowerCase().includes(q2) || p.bc.includes(q2)
+              ) : [];
               const newPOSub = newPOLines.reduce((a, l) => a + l.qty * l.cost, 0);
               const lineProds = newPOLines.map(l => ({ l, p: pById(l.pid)! })).filter(x => x.p);
+              const thStyle: React.CSSProperties = { padding: '9px 10px', fontSize: 11, fontWeight: 600, color: 'var(--c-sub)', textTransform: 'uppercase', letterSpacing: '.04em', whiteSpace: 'nowrap' };
+              const inpStyle = (w: number): React.CSSProperties => ({ width: w, height: 32, border: '1px solid var(--c-border)', background: 'var(--c-surface-2)', borderRadius: 7, textAlign: 'right', paddingRight: 7, paddingLeft: 7, fontSize: 13, fontWeight: 600, color: 'var(--c-text)', outline: 'none', fontFamily: 'inherit', fontVariantNumeric: 'tabular-nums' });
               return (
-                <div style={{ animation: 'svfade .25s ease' }}>
-                  {/* Header */}
-                  <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', gap: 16, marginBottom: 22 }}>
+                <div style={{ animation: 'svfade .25s ease' }} onClick={() => setPoColsOpen(false)}>
+                  <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', gap: 16, marginBottom: 20 }}>
                     <div>
                       <button onClick={() => setScreen('po')} style={{ background: 'none', border: 'none', color: 'var(--c-sub)', fontSize: 12.5, fontWeight: 600, cursor: 'pointer', padding: 0, marginBottom: 6, fontFamily: 'inherit' }}>← {T.poTitle}</button>
                       <h1 style={{ margin: 0, fontSize: 24, fontWeight: 700, letterSpacing: '-0.03em' }}>{T.poCreate}</h1>
-                      <p style={{ margin: '5px 0 0', fontSize: 13, color: 'var(--c-sub)' }}>{T.poCreateSub}</p>
                     </div>
-                    <div style={{ display: 'flex', gap: 9, flexShrink: 0 }}>
+                    <div style={{ display: 'flex', gap: 9, flexShrink: 0, paddingTop: 22 }}>
                       <button onClick={() => setScreen('po')} style={btn}>{T.cancel}</button>
                       <button onClick={() => savePO('draft')} style={btn}>{T.poCreateDraft}</button>
                       <button onClick={() => savePO('ordered')} style={btnPrimary}>{T.poCreateSend}</button>
                     </div>
                   </div>
 
-                  {/* Order metadata */}
-                  <div style={{ ...cardStyle, marginBottom: 16, display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 14 }}>
-                    <div>
-                      <label style={{ fontSize: 11.5, fontWeight: 600, color: 'var(--c-sub)', display: 'block', marginBottom: 6 }}>{T.cSup}</label>
-                      <select value={newPOSup} onChange={e => setNewPOSup(e.target.value)} style={{ ...selectStyle, height: 40 }}>
-                        {Object.entries(supMeta).map(([k, s]) => <option key={k} value={k}>{s.name}</option>)}
-                      </select>
-                    </div>
-                    <div>
-                      <label style={{ fontSize: 11.5, fontWeight: 600, color: 'var(--c-sub)', display: 'block', marginBottom: 6 }}>{T.expected}</label>
-                      <input type="date" value={newPOExp} onChange={e => setNewPOExp(e.target.value)} style={{ ...inputStyle, height: 40 }} />
-                    </div>
-                  </div>
-
-                  <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 16, alignItems: 'start' }}>
-                    {/* Product search panel */}
-                    <div style={{ ...cardStyle, padding: 0, overflow: 'hidden' }}>
-                      <div style={{ padding: '12px 14px', borderBottom: '1px solid var(--c-border-2)' }}>
-                        <p style={{ margin: '0 0 8px', fontSize: 13, fontWeight: 600 }}>{ES ? 'Agregar productos' : 'Add products'}</p>
-                        <div style={{ position: 'relative' }}>
-                          <span style={{ position: 'absolute', left: 10, top: '50%', transform: 'translateY(-50%)', color: 'var(--c-faint)', fontSize: 14 }}>⌕</span>
-                          <input value={poSearch} onChange={e => setPoSearch(e.target.value)} placeholder={T.poSearchPh} style={{ ...inputStyle, paddingLeft: 30, height: 36 }} />
-                        </div>
+                  <div style={{ ...cardStyle, padding: 0, overflow: 'visible' }}>
+                    {/* Metadata row */}
+                    <div style={{ display: 'flex', gap: 16, padding: '14px 18px', borderBottom: '1px solid var(--c-border-2)', alignItems: 'flex-end' }}>
+                      <div style={{ flex: '0 0 260px' }}>
+                        <label style={{ fontSize: 11, fontWeight: 600, color: 'var(--c-sub)', display: 'block', marginBottom: 5, textTransform: 'uppercase', letterSpacing: '.04em' }}>{T.cSup}</label>
+                        <select value={newPOSup} onChange={e => setNewPOSup(e.target.value)} style={{ ...selectStyle, height: 36 }}>
+                          {Object.entries(supMeta).map(([k, s]) => <option key={k} value={k}>{s.name}</option>)}
+                        </select>
                       </div>
-                      <div style={{ maxHeight: 380, overflowY: 'auto' }}>
-                        {searchResults.length === 0 ? (
-                          <p style={{ textAlign: 'center', color: 'var(--c-faint)', fontSize: 13, padding: '24px 16px', margin: 0 }}>{ES ? 'Sin resultados' : 'No results'}</p>
-                        ) : searchResults.map(p => {
-                          const inOrder = newPOLines.some(l => l.pid === p.id);
-                          return (
-                            <div key={p.id} style={{ display: 'flex', alignItems: 'center', gap: 11, padding: '10px 14px', borderBottom: '1px solid var(--c-border-2)', background: inOrder ? 'var(--c-green-bg)' : undefined }}>
-                              <div style={{ width: 34, height: 34, borderRadius: 8, background: p.catColor, color: '#fff', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 11, fontWeight: 700, flexShrink: 0 }}>{p.initials}</div>
-                              <div style={{ flex: 1, minWidth: 0 }}>
-                                <p style={{ margin: 0, fontSize: 13, fontWeight: 600, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{p.name}</p>
-                                <p style={{ margin: '2px 0 0', fontSize: 11, color: 'var(--c-faint)' }}>{p.sku} · {ES ? 'Stock' : 'Stock'}: {p.total}</p>
-                              </div>
-                              <span style={{ fontSize: 12.5, fontWeight: 600, color: 'var(--c-sub)', flexShrink: 0, marginRight: 6 }}>{money(p.cost)}</span>
-                              <button
-                                onClick={() => inOrder ? removeLineItem(p.id) : addLineItem(p.id)}
-                                style={{ width: 28, height: 28, borderRadius: 7, border: 'none', background: inOrder ? 'var(--c-green-text)' : 'var(--c-primary)', color: '#fff', fontWeight: 700, fontSize: 16, cursor: 'pointer', flexShrink: 0, display: 'flex', alignItems: 'center', justifyContent: 'center', lineHeight: 1, fontFamily: 'inherit' }}
-                              >{inOrder ? '−' : '+'}</button>
-                            </div>
-                          );
-                        })}
+                      <div style={{ flex: '0 0 180px' }}>
+                        <label style={{ fontSize: 11, fontWeight: 600, color: 'var(--c-sub)', display: 'block', marginBottom: 5, textTransform: 'uppercase', letterSpacing: '.04em' }}>{T.expected}</label>
+                        <input type="date" value={newPOExp} onChange={e => setNewPOExp(e.target.value)} style={{ ...inputStyle, height: 36 }} />
+                      </div>
+                      <div style={{ marginLeft: 'auto', position: 'relative' }} onClick={e => e.stopPropagation()}>
+                        <button onClick={() => setPoColsOpen(o => !o)} style={{ ...btn, height: 32, padding: '0 12px', fontSize: 12 }}>{T.poCols} ▾</button>
+                        {poColsOpen && (
+                          <div style={{ position: 'absolute', right: 0, top: 38, background: 'var(--c-surface)', border: '1px solid var(--c-border)', borderRadius: 10, boxShadow: '0 8px 24px rgba(0,0,0,.15)', zIndex: 60, padding: '8px 0', minWidth: 180 }}>
+                            {([['sku', T.poColSku], ['bc', T.poColBc], ['cat', T.poColCat], ['margin', T.poColMargin]] as [keyof typeof poCols, string][]).map(([k, label]) => (
+                              <label key={k} style={{ display: 'flex', alignItems: 'center', gap: 9, padding: '8px 16px', cursor: 'pointer', fontSize: 13 }}>
+                                <input type="checkbox" checked={poCols[k]} onChange={e => setPoCols(c => ({...c, [k]: e.target.checked}))} style={{ width: 15, height: 15, cursor: 'pointer', accentColor: 'var(--c-primary)' }} />
+                                {label}
+                              </label>
+                            ))}
+                          </div>
+                        )}
                       </div>
                     </div>
 
                     {/* Line items table */}
-                    <div style={{ ...cardStyle, padding: 0, overflow: 'hidden' }}>
-                      <div style={{ padding: '12px 14px', borderBottom: '1px solid var(--c-border-2)', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-                        <p style={{ margin: 0, fontSize: 13, fontWeight: 600 }}>{T.poLineItems} <span style={{ color: 'var(--c-faint)', fontWeight: 500 }}>({lineProds.length})</span></p>
-                        <div style={{ position: 'relative' }}>
-                          <button onClick={() => setPoColsOpen(o => !o)} style={{ ...btn, height: 30, padding: '0 10px', fontSize: 12 }}>{T.poCols} ▾</button>
-                          {poColsOpen && (
-                            <div onClick={e => e.stopPropagation()} style={{ position: 'absolute', right: 0, top: 36, background: 'var(--c-surface)', border: '1px solid var(--c-border)', borderRadius: 10, boxShadow: '0 8px 24px rgba(0,0,0,.15)', zIndex: 50, padding: '8px 0', minWidth: 170 }}>
-                              {([['sku', T.poColSku], ['bc', T.poColBc], ['cat', T.poColCat], ['margin', T.poColMargin]] as [keyof typeof poCols, string][]).map(([k, label]) => (
-                                <label key={k} style={{ display: 'flex', alignItems: 'center', gap: 9, padding: '7px 14px', cursor: 'pointer', fontSize: 13 }}>
-                                  <input type="checkbox" checked={poCols[k]} onChange={e => setPoCols(c => ({...c, [k]: e.target.checked}))} style={{ width: 15, height: 15, cursor: 'pointer' }} />
-                                  {label}
-                                </label>
-                              ))}
-                            </div>
-                          )}
+                    <div style={{ overflowX: 'auto' }}>
+                      <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 13 }}>
+                        <thead>
+                          <tr style={{ background: 'var(--c-surface-2)' }}>
+                            <th style={{ ...thStyle, textAlign: 'left', padding: '9px 18px' }}>{T.hProd}</th>
+                            {poCols.sku && <th style={{ ...thStyle, textAlign: 'left' }}>{T.poColSku}</th>}
+                            {poCols.bc && <th style={{ ...thStyle, textAlign: 'left' }}>{T.poColBc}</th>}
+                            {poCols.cat && <th style={{ ...thStyle, textAlign: 'left' }}>{T.poColCat}</th>}
+                            <th style={{ ...thStyle, textAlign: 'right' }}>{T.poQtyCol}</th>
+                            <th style={{ ...thStyle, textAlign: 'right' }}>{T.poCostCol}</th>
+                            <th style={{ ...thStyle, textAlign: 'right' }}>{T.poRetail}</th>
+                            {poCols.margin && <th style={{ ...thStyle, textAlign: 'right' }}>{T.poColMargin}</th>}
+                            <th style={{ ...thStyle, textAlign: 'right', padding: '9px 18px' }}>{T.cTotal}</th>
+                            <th style={{ width: 36 }}></th>
+                          </tr>
+                        </thead>
+                        <tbody>
+                          {lineProds.length === 0 ? (
+                            <tr><td colSpan={10} style={{ padding: '28px 18px', textAlign: 'center', color: 'var(--c-faint)', fontSize: 13 }}>{T.poLinesEmpty}</td></tr>
+                          ) : lineProds.map(({l, p}) => {
+                            const margin = l.retail > 0 ? Math.round((1 - l.cost / l.retail) * 100) : 0;
+                            return (
+                              <tr key={l.pid} style={{ borderTop: '1px solid var(--c-border-2)' }}>
+                                <td style={{ padding: '10px 18px' }}>
+                                  <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+                                    <div style={{ width: 32, height: 32, borderRadius: 8, background: p.catColor, color: '#fff', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 10.5, fontWeight: 700, flexShrink: 0 }}>{p.initials}</div>
+                                    <div style={{ minWidth: 0 }}>
+                                      <p style={{ margin: 0, fontWeight: 600, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', maxWidth: 200 }}>{p.name}</p>
+                                    </div>
+                                  </div>
+                                </td>
+                                {poCols.sku && <td style={{ padding: '10px', color: 'var(--c-faint)', fontSize: 11.5, whiteSpace: 'nowrap' }}>{p.sku}</td>}
+                                {poCols.bc && <td style={{ padding: '10px', color: 'var(--c-faint)', fontSize: 11.5, whiteSpace: 'nowrap', fontVariantNumeric: 'tabular-nums' }}>{p.bc}</td>}
+                                {poCols.cat && <td style={{ padding: '10px', fontSize: 12.5 }}>{p.catName}</td>}
+                                <td style={{ padding: '10px', textAlign: 'right' }}>
+                                  <input value={l.qty} onChange={e => updateLineQty(l.pid, e.target.value)} style={{ ...inpStyle(56), textAlign: 'center' }} />
+                                </td>
+                                <td style={{ padding: '10px', textAlign: 'right' }}>
+                                  <input value={l.cost} onChange={e => updateLineCost(l.pid, e.target.value)} style={inpStyle(80)} />
+                                </td>
+                                <td style={{ padding: '10px', textAlign: 'right' }}>
+                                  <input value={l.retail} onChange={e => updateLineRetail(l.pid, e.target.value)} style={inpStyle(80)} />
+                                </td>
+                                {poCols.margin && <td style={{ padding: '10px', textAlign: 'right', fontWeight: 600, fontSize: 12.5, color: margin >= 0 ? 'var(--c-green-text)' : 'var(--c-red-text)', whiteSpace: 'nowrap' }}>{margin}%</td>}
+                                <td style={{ padding: '10px 18px', textAlign: 'right', fontWeight: 700, fontVariantNumeric: 'tabular-nums', whiteSpace: 'nowrap' }}>{money(l.qty * l.cost)}</td>
+                                <td style={{ padding: '10px 10px 10px 0', textAlign: 'center' }}>
+                                  <button onClick={() => removeLineItem(l.pid)} style={{ background: 'none', border: 'none', color: 'var(--c-faint)', cursor: 'pointer', fontSize: 18, lineHeight: 1, padding: '0 4px', fontFamily: 'inherit' }}>×</button>
+                                </td>
+                              </tr>
+                            );
+                          })}
+                        </tbody>
+                      </table>
+                    </div>
+
+                    {/* Inline product search */}
+                    <div style={{ borderTop: '1px solid var(--c-border-2)', padding: '10px 18px', position: 'relative' }}>
+                      <div style={{ position: 'relative' }}>
+                        <span style={{ position: 'absolute', left: 10, top: '50%', transform: 'translateY(-50%)', color: 'var(--c-faint)', fontSize: 14 }}>⌕</span>
+                        <input
+                          value={poSearch}
+                          onChange={e => setPoSearch(e.target.value)}
+                          onFocus={() => { if (poSearch) {} }}
+                          placeholder={T.poSearchPh}
+                          style={{ ...inputStyle, paddingLeft: 32, height: 36, background: 'var(--c-surface-2)' }}
+                        />
+                        {poSearch && <button onClick={() => setPoSearch('')} style={{ position: 'absolute', right: 10, top: '50%', transform: 'translateY(-50%)', background: 'none', border: 'none', color: 'var(--c-faint)', cursor: 'pointer', fontSize: 16, lineHeight: 1, fontFamily: 'inherit' }}>×</button>}
+                      </div>
+                      {searchDrop.length > 0 && (
+                        <div style={{ position: 'absolute', left: 18, right: 18, top: '100%', background: 'var(--c-surface)', border: '1px solid var(--c-border)', borderRadius: 10, boxShadow: '0 8px 24px rgba(0,0,0,.15)', zIndex: 55, maxHeight: 280, overflowY: 'auto' }}>
+                          {searchDrop.map(p => {
+                            const inOrder = newPOLines.some(l => l.pid === p.id);
+                            return (
+                              <div key={p.id} onClick={() => inOrder ? removeLineItem(p.id) : addLineItem(p.id)} style={{ display: 'flex', alignItems: 'center', gap: 11, padding: '10px 14px', borderBottom: '1px solid var(--c-border-2)', cursor: 'pointer', background: inOrder ? 'var(--c-green-bg)' : undefined }}>
+                                <div style={{ width: 32, height: 32, borderRadius: 8, background: p.catColor, color: '#fff', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 11, fontWeight: 700, flexShrink: 0 }}>{p.initials}</div>
+                                <div style={{ flex: 1, minWidth: 0 }}>
+                                  <p style={{ margin: 0, fontSize: 13, fontWeight: 600, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{p.name}</p>
+                                  <p style={{ margin: '2px 0 0', fontSize: 11, color: 'var(--c-faint)' }}>{p.sku} · {ES ? 'Stock' : 'Stock'}: {p.total} · {money(p.cost)}</p>
+                                </div>
+                                <span style={{ fontSize: 12, fontWeight: 700, color: inOrder ? 'var(--c-green-text)' : 'var(--c-primary)', flexShrink: 0 }}>{inOrder ? (ES?'Quitar':'Remove') : (ES?'Agregar':'Add')}</span>
+                              </div>
+                            );
+                          })}
+                        </div>
+                      )}
+                    </div>
+
+                    {/* Totals */}
+                    <div style={{ padding: '14px 18px', borderTop: '1px solid var(--c-border-2)', background: 'var(--c-surface-2)', display: 'flex', justifyContent: 'flex-end' }}>
+                      <div style={{ display: 'flex', flexDirection: 'column', gap: 6, minWidth: 240 }}>
+                        <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 13 }}>
+                          <span style={{ color: 'var(--c-sub)' }}>{T.subtotal}</span>
+                          <span style={{ fontWeight: 600, fontVariantNumeric: 'tabular-nums' }}>{money(newPOSub)}</span>
+                        </div>
+                        <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 13 }}>
+                          <span style={{ color: 'var(--c-sub)' }}>{T.tax}</span>
+                          <span style={{ fontWeight: 600, fontVariantNumeric: 'tabular-nums' }}>{money(newPOSub * 0.16)}</span>
+                        </div>
+                        <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 16, paddingTop: 9, borderTop: '1px solid var(--c-border)', marginTop: 2 }}>
+                          <span style={{ fontWeight: 700 }}>{T.total}</span>
+                          <span style={{ fontWeight: 700, fontVariantNumeric: 'tabular-nums' }}>{money(newPOSub * 1.16)}</span>
                         </div>
                       </div>
-                      {lineProds.length === 0 ? (
-                        <div style={{ padding: '32px 20px', textAlign: 'center', color: 'var(--c-faint)', fontSize: 13 }}>
-                          <p style={{ margin: 0 }}>{T.poLinesEmpty}</p>
-                        </div>
-                      ) : (
-                        <>
-                          <div style={{ overflowX: 'auto' }}>
-                            <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 12.5 }}>
-                              <thead>
-                                <tr style={{ background: 'var(--c-surface-2)' }}>
-                                  <th style={{ textAlign: 'left', padding: '8px 12px', fontSize: 11, fontWeight: 600, color: 'var(--c-sub)', textTransform: 'uppercase', letterSpacing: '.04em' }}>{T.hProd}</th>
-                                  {poCols.sku && <th style={{ textAlign: 'left', padding: '8px 8px', fontSize: 11, fontWeight: 600, color: 'var(--c-sub)', textTransform: 'uppercase', letterSpacing: '.04em' }}>{T.poColSku}</th>}
-                                  {poCols.cat && <th style={{ textAlign: 'left', padding: '8px 8px', fontSize: 11, fontWeight: 600, color: 'var(--c-sub)', textTransform: 'uppercase', letterSpacing: '.04em' }}>{T.poColCat}</th>}
-                                  <th style={{ textAlign: 'right', padding: '8px 8px', fontSize: 11, fontWeight: 600, color: 'var(--c-sub)', textTransform: 'uppercase', letterSpacing: '.04em' }}>{T.poQtyCol}</th>
-                                  <th style={{ textAlign: 'right', padding: '8px 8px', fontSize: 11, fontWeight: 600, color: 'var(--c-sub)', textTransform: 'uppercase', letterSpacing: '.04em' }}>{T.poCostCol}</th>
-                                  <th style={{ textAlign: 'right', padding: '8px 8px', fontSize: 11, fontWeight: 600, color: 'var(--c-sub)', textTransform: 'uppercase', letterSpacing: '.04em' }}>{T.poRetail}</th>
-                                  {poCols.margin && <th style={{ textAlign: 'right', padding: '8px 8px', fontSize: 11, fontWeight: 600, color: 'var(--c-sub)', textTransform: 'uppercase', letterSpacing: '.04em' }}>{T.poColMargin}</th>}
-                                  <th style={{ textAlign: 'right', padding: '8px 8px', fontSize: 11, fontWeight: 600, color: 'var(--c-sub)', textTransform: 'uppercase', letterSpacing: '.04em' }}>{T.cTotal}</th>
-                                  <th style={{ padding: '8px 12px', width: 32 }}></th>
-                                </tr>
-                              </thead>
-                              <tbody>
-                                {lineProds.map(({l, p}) => {
-                                  const lineTotal = l.qty * l.cost;
-                                  const margin = p.price > 0 ? Math.round((1 - l.cost / p.price) * 100) : 0;
-                                  return (
-                                    <tr key={l.pid} style={{ borderTop: '1px solid var(--c-border-2)' }}>
-                                      <td style={{ padding: '10px 12px' }}>
-                                        <div style={{ display: 'flex', alignItems: 'center', gap: 9 }}>
-                                          <div style={{ width: 30, height: 30, borderRadius: 7, background: p.catColor, color: '#fff', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 10, fontWeight: 700, flexShrink: 0 }}>{p.initials}</div>
-                                          <span style={{ fontSize: 12.5, fontWeight: 600, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', maxWidth: 110 }}>{p.name}</span>
-                                        </div>
-                                      </td>
-                                      {poCols.sku && <td style={{ padding: '10px 8px', color: 'var(--c-faint)', fontSize: 11.5, whiteSpace: 'nowrap' }}>{p.sku}</td>}
-                                      {poCols.cat && <td style={{ padding: '10px 8px', fontSize: 11.5 }}>{p.catName}</td>}
-                                      <td style={{ padding: '10px 8px', textAlign: 'right' }}>
-                                        <input value={l.qty} onChange={e => updateLineQty(l.pid, e.target.value)} style={{ width: 52, height: 30, border: '1px solid var(--c-border)', background: 'var(--c-surface-2)', borderRadius: 7, textAlign: 'center', fontSize: 13, fontWeight: 600, color: 'var(--c-text)', outline: 'none', fontFamily: 'inherit' }} />
-                                      </td>
-                                      <td style={{ padding: '10px 8px', textAlign: 'right' }}>
-                                        <input value={l.cost} onChange={e => updateLineCost(l.pid, e.target.value)} style={{ width: 70, height: 30, border: '1px solid var(--c-border)', background: 'var(--c-surface-2)', borderRadius: 7, textAlign: 'right', paddingRight: 6, fontSize: 12, fontWeight: 600, color: 'var(--c-text)', outline: 'none', fontFamily: 'inherit' }} />
-                                      </td>
-                                      <td style={{ padding: '10px 8px', textAlign: 'right', color: 'var(--c-sub)', fontVariantNumeric: 'tabular-nums', fontSize: 12 }}>{money(p.price)}</td>
-                                      {poCols.margin && <td style={{ padding: '10px 8px', textAlign: 'right', color: margin >= 0 ? 'var(--c-green-text)' : 'var(--c-red-text)', fontWeight: 600, fontSize: 12 }}>{margin}%</td>}
-                                      <td style={{ padding: '10px 8px', textAlign: 'right', fontWeight: 700, fontVariantNumeric: 'tabular-nums', fontSize: 12 }}>{money(lineTotal)}</td>
-                                      <td style={{ padding: '10px 12px', textAlign: 'center' }}>
-                                        <button onClick={() => removeLineItem(l.pid)} style={{ background: 'none', border: 'none', color: 'var(--c-faint)', cursor: 'pointer', fontSize: 16, lineHeight: 1, padding: '0 2px', fontFamily: 'inherit' }}>×</button>
-                                      </td>
-                                    </tr>
-                                  );
-                                })}
-                              </tbody>
-                            </table>
-                          </div>
-                          <div style={{ padding: '14px 16px', borderTop: '1px solid var(--c-border-2)', background: 'var(--c-surface-2)' }}>
-                            <div style={{ display: 'flex', flexDirection: 'column', gap: 6, alignItems: 'flex-end' }}>
-                              <div style={{ display: 'flex', justifyContent: 'space-between', width: 220, fontSize: 13 }}>
-                                <span style={{ color: 'var(--c-sub)' }}>{T.subtotal}</span>
-                                <span style={{ fontWeight: 600, fontVariantNumeric: 'tabular-nums' }}>{money(newPOSub)}</span>
-                              </div>
-                              <div style={{ display: 'flex', justifyContent: 'space-between', width: 220, fontSize: 13 }}>
-                                <span style={{ color: 'var(--c-sub)' }}>{T.tax}</span>
-                                <span style={{ fontWeight: 600, fontVariantNumeric: 'tabular-nums' }}>{money(newPOSub * 0.16)}</span>
-                              </div>
-                              <div style={{ display: 'flex', justifyContent: 'space-between', width: 220, fontSize: 15, paddingTop: 8, borderTop: '1px solid var(--c-border)', marginTop: 2 }}>
-                                <span style={{ fontWeight: 700 }}>{T.total}</span>
-                                <span style={{ fontWeight: 700, fontVariantNumeric: 'tabular-nums' }}>{money(newPOSub * 1.16)}</span>
-                              </div>
-                            </div>
-                          </div>
-                        </>
-                      )}
                     </div>
                   </div>
                 </div>
